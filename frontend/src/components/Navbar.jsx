@@ -1,13 +1,32 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { Twitter } from 'lucide-react';
+import { Twitter, LogOut } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Navbar = () => {
   const location = useLocation();
+  const { connected, disconnect } = useWallet();
 
   const isActive = (path) => {
     return location.pathname === path;
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      // Desconectar wallet
+      await disconnect();
+      
+      // Limpiar TODO el localStorage
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      toast.success('Wallet disconnected');
+    } catch (error) {
+      console.error('Error disconnecting:', error);
+      toast.error('Error disconnecting wallet');
+    }
   };
 
   return (
@@ -66,9 +85,21 @@ const Navbar = () => {
             </a>
           </div>
 
-          {/* Wallet Button */}
-          <div className="flex items-center">
+          {/* Wallet Buttons */}
+          <div className="flex items-center space-x-2">
             <WalletMultiButton className="!bg-mayhem-600 hover:!bg-mayhem-700 !rounded-lg !h-10" />
+            
+            {/* Botón de desconexión explícito */}
+            {connected && (
+              <button
+                onClick={handleDisconnect}
+                className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                title="Disconnect wallet and clear cache"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Disconnect</span>
+              </button>
+            )}
           </div>
         </div>
 
