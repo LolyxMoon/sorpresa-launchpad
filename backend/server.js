@@ -7,6 +7,8 @@ const nacl = require('tweetnacl');
 const bs58 = require('bs58');
 const fs = require('fs');
 const path = require('path');
+const FormData = require('form-data');
+const { Keypair } = require('@solana/web3.js');
 require('dotenv').config();
 
 const app = express();
@@ -21,30 +23,26 @@ app.use(cors({
 
 app.use(express.json());
 
-// Configuración de Multer para manejar archivos
+// Configuración de Multer
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// Crear directorio de uploads si no existe
+// Crear directorio de uploads
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log('📁 Created uploads directory');
 }
 
-// Servir archivos estáticos de uploads
 app.use('/uploads', express.static(uploadsDir));
-console.log('📁 Serving uploads from:', uploadsDir);
 
 // Variables de entorno
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI;
-const PUMPPORTAL_API_KEY = process.env.PUMPPORTAL_API_KEY;
-const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL;
-const DEXSCREENER_API = process.env.DEXSCREENER_API || 'https://api.dexscreener.com/latest/dex';
+const PUMPPORTAL_API_KEY = process.env.PUMPPORTAL_API_KEY || '5x8n8y1ge5338v3ncxtq8nud8wtketut6h26muabecwm2xv76t5ppntn7184ukaragqmmgb49x0pcrb7b98ppp22chrjpuv5a95k4mure1h4wtkeaxr44gahetaqgpaa6hrmcwkm84yku9t5nau3bett7mjuucmnpwtabc88x46gwaq9nt2yktm6ctqcnk29h34pw24dn0kuf8tmb';
+const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=0b23dead-e221-43e0-9e34-283af384a9b0';
 const API_URL = process.env.API_URL || 'http://localhost:3001';
 
 // Base de datos
@@ -61,18 +59,14 @@ if (MONGODB_URI) {
     db = mongoose.connection.db;
   })
   .catch((error) => {
-    console.error('⚠️ MongoDB connection failed, using in-memory storage:', error.message);
+    console.error('⚠️ MongoDB connection failed:', error.message);
   });
 } else {
   console.log('⚠️ MongoDB URI not provided, using in-memory storage');
-}
-
-// Storage en memoria para desarrollo (si no hay MongoDB)
-if (!db) {
   global.tokensMemory = [];
 }
 
-// Función para verificar firma de wallet
+// Verificar firma de wallet
 function verifyWalletSignature(walletAddress, signature, message) {
   try {
     const publicKey = bs58.decode(walletAddress);
@@ -85,11 +79,109 @@ function verifyWalletSignature(walletAddress, signature, message) {
       publicKey
     );
 
-    console.log(`🔐 Wallet signature verification for ${walletAddress.slice(0, 8)}...: ${isValid ? 'VALID ✅' : 'INVALID ❌'}`);
+    console.log(`🔐 Wallet ${walletAddress.slice(0, 8)}... signature: ${isValid ? '✅ VALID' : '❌ INVALID'}`);
     return isValid;
   } catch (error) {
     console.error('❌ Error verifying signature:', error.message);
     return false;
+  }
+}
+
+// ============================================
+// FUNCIÓN PARA CREAR TOKEN CON MAYHEM MODE
+// ============================================
+
+async function createMayhemToken(tokenData, imageBuffer) {
+  try {
+    console.log('🔥 Creating MAYHEM MODE token on Pump.fun...');
+    
+    // 1. Subir metadata a IPFS
+    const formData = new FormData();
+    formData.append('file', imageBuffer, {
+      filename: 'token.png',
+      contentType: 'image/png'
+    });
+    formData.append('name', tokenData.name);
+    formData.append('symbol', tokenData.symbol);
+    formData.append('description', tokenData.description);
+    formData.append('twitter', tokenData.twitter || '');
+    formData.append('telegram', tokenData.telegram || '');
+    formData.append('website', tokenData.website || '');
+    formData.append('showName', 'true');
+
+    console.log('📤 Uploading metadata to IPFS...');
+    
+    const metadataResponse = await axios.post(
+      'https://pump.fun/api/ipfs',
+      formData,
+      {
+        headers: formData.getHeaders(),
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      }
+    );
+
+    const metadataUri = metadataResponse.data.metadataUri;
+    console.log('✅ Metadata uploaded:', metadataUri);
+
+    // 2. Generar keypair para el token
+    const mintKeypair = Keypair.generate();
+    const mintAddress = mintKeypair.publicKey.toBase58();
+    
+    console.log('🔑 Generated mint keypair:', mintAddress);
+
+    // 3. Preparar token metadata
+    const tokenMetadata = {
+      name: tokenData.name,
+      symbol: tokenData.symbol,
+      uri: metadataUri
+    };
+
+    // 4. Crear transacción con MAYHEM MODE activado
+    console.log('🔥 Creating MAYHEM transaction...');
+    
+    const createPayload = {
+      action: 'create',
+      tokenMetadata: tokenMetadata,
+      mint: mintKeypair.secretKey.toString(), // Enviar la secret key como string
+      denominatedInSol: 'true',
+      amount: parseFloat(tokenData.devBuyAmount || 0),
+      slippage: parseInt(tokenData.slippage || 10),
+      priorityFee: parseFloat(tokenData.priorityFee || 0.0005),
+      pool: 'pump',
+      isMayhemMode: 'true' // ⭐ MAYHEM MODE ACTIVADO
+    };
+
+    console.log('📝 Payload:', {
+      ...createPayload,
+      mint: '[SECRET KEY HIDDEN]'
+    });
+
+    const createResponse = await axios.post(
+      `https://pumpportal.fun/api/trade?api-key=${PUMPPORTAL_API_KEY}`,
+      createPayload,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log('✅ Transaction created on PumpPortal');
+    console.log('   Mint:', mintAddress);
+    console.log('   Signature:', createResponse.data.signature);
+
+    return {
+      success: true,
+      mintAddress: mintAddress,
+      signature: createResponse.data.signature,
+      metadataUri: metadataUri,
+      mayhemMode: true
+    };
+
+  } catch (error) {
+    console.error('❌ Error creating Mayhem token:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to create token on Pump.fun');
   }
 }
 
@@ -100,16 +192,19 @@ function verifyWalletSignature(walletAddress, signature, message) {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
-    status: 'ok', 
+    status: 'ok',
+    mayhemMode: true,
     timestamp: new Date().toISOString(),
     mongodb: db ? 'connected' : 'in-memory'
   });
 });
 
-// Crear token con verificación de wallet
+// Crear token con Mayhem Mode
 app.post('/api/create-token', upload.single('image'), async (req, res) => {
   try {
-    console.log('📝 Creating token...');
+    console.log('🔥 ============================================');
+    console.log('🔥 MAYHEM MODE TOKEN CREATION REQUEST');
+    console.log('🔥 ============================================');
     
     const { 
       walletAddress, 
@@ -121,107 +216,124 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
       twitter,
       telegram,
       website,
-      showName,
       devBuyAmount,
       slippage,
       priorityFee
     } = req.body;
 
-    // Verificar que tenemos todos los datos necesarios
+    // Verificar datos de wallet
     if (!walletAddress || !signature || !message) {
       console.log('❌ Missing wallet verification data');
       return res.status(400).json({ error: 'Missing wallet verification data' });
     }
 
-    // Verificar firma de wallet
-    console.log(`🔐 Verifying wallet: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)}`);
+    // Verificar firma
+    console.log(`🔐 Verifying wallet: ${walletAddress.slice(0, 8)}...`);
     const isValidSignature = verifyWalletSignature(walletAddress, signature, message);
     
     if (!isValidSignature) {
       console.log('❌ Invalid signature!');
-      return res.status(401).json({ error: 'Invalid wallet signature. Please try again.' });
+      return res.status(401).json({ error: 'Invalid wallet signature' });
     }
 
     console.log('✅ Wallet verified!');
 
-    // Procesar imagen
-    let imageUrl = null;
-    if (req.file) {
-      try {
-        const imageFilename = `${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-        const imagePath = path.join(uploadsDir, imageFilename);
-        fs.writeFileSync(imagePath, req.file.buffer);
-        
-        // URL pública de la imagen
-        imageUrl = `${API_URL}/uploads/${imageFilename}`;
-        
-        console.log(`📷 Image saved: ${imageUrl}`);
-      } catch (error) {
-        console.error('❌ Error saving image:', error.message);
-        // Continuar sin imagen
-      }
+    // Verificar imagen
+    if (!req.file) {
+      console.log('❌ No image provided');
+      return res.status(400).json({ error: 'Token image is required' });
     }
 
-    // ============================================
-    // INTEGRACIÓN CON PUMP.FUN
-    // ============================================
-    // IMPORTANTE: Aquí debes integrar tu lógica de Pump.fun
-    // El ejemplo a continuación es solo un placeholder
-    
-    // TODO: Reemplazar con tu integración real de Pump.fun
-    // que use el walletAddress del usuario para crear el token
-    
-    // Por ahora, crear un token de ejemplo
-    const mintAddress = 'TOKEN' + Date.now() + Math.random().toString(36).substring(7);
-    
-    console.log('🚀 Token creation initiated');
-    console.log(`   Name: ${name}`);
-    console.log(`   Symbol: ${symbol}`);
-    console.log(`   Creator: ${walletAddress.slice(0, 8)}...`);
-    
-    // ============================================
-    // FIN DE INTEGRACIÓN CON PUMP.FUN
-    // ============================================
-    
+    console.log(`📷 Image received: ${req.file.size} bytes`);
+
+    // Guardar imagen localmente
+    let localImageUrl = null;
+    try {
+      const imageFilename = `${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const imagePath = path.join(uploadsDir, imageFilename);
+      fs.writeFileSync(imagePath, req.file.buffer);
+      localImageUrl = `${API_URL}/uploads/${imageFilename}`;
+      console.log(`✅ Image saved: ${localImageUrl}`);
+    } catch (error) {
+      console.error('⚠️ Error saving image:', error.message);
+    }
+
     // Preparar datos del token
+    const tokenCreationData = {
+      creator: walletAddress,
+      name,
+      symbol,
+      description,
+      twitter: twitter || '',
+      telegram: telegram || '',
+      website: website || '',
+      devBuyAmount: devBuyAmount || '0',
+      slippage: slippage || '10',
+      priorityFee: priorityFee || '0.0005'
+    };
+
+    // Crear token en Pump.fun con MAYHEM MODE
+    console.log('🔥 Initiating MAYHEM MODE creation...');
+    
+    let pumpFunResult;
+    try {
+      pumpFunResult = await createMayhemToken(tokenCreationData, req.file.buffer);
+    } catch (error) {
+      console.error('❌ Pump.fun creation failed:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to create token: ' + error.message 
+      });
+    }
+
+    const { mintAddress, signature: txSignature, metadataUri } = pumpFunResult;
+
+    console.log('🎉 MAYHEM MODE TOKEN CREATED!');
+    console.log(`   Mint: ${mintAddress}`);
+    console.log(`   Transaction: https://solscan.io/tx/${txSignature}`);
+    
+    // Guardar en base de datos
     const token = {
       mintAddress,
       name,
       symbol,
       description,
-      imageUrl,
+      imageUrl: localImageUrl,
+      metadataUri,
       creator: walletAddress,
       twitter: twitter || null,
       telegram: telegram || null,
       website: website || null,
       pumpFunUrl: `https://pump.fun/${mintAddress}`,
       solscanUrl: `https://solscan.io/token/${mintAddress}`,
-      metadataUri: imageUrl,
+      transactionUrl: `https://solscan.io/tx/${txSignature}`,
       devBuyAmount: devBuyAmount || '0',
+      mayhemMode: true, // ⭐ MAYHEM MODE
+      status: 'confirmed',
+      signature: txSignature,
       createdAt: new Date()
     };
 
-    // Guardar en base de datos
+    // Guardar en MongoDB
     if (db) {
       try {
         await db.collection('tokens').insertOne(token);
-        console.log(`✅ Token saved to MongoDB: ${mintAddress}`);
+        console.log(`✅ Token saved to MongoDB`);
       } catch (error) {
-        console.error('❌ Error saving to MongoDB:', error.message);
-        // Continuar de todos modos
+        console.error('⚠️ Error saving to MongoDB:', error.message);
       }
     } else {
-      // Guardar en memoria si no hay MongoDB
       if (!global.tokensMemory) global.tokensMemory = [];
       global.tokensMemory.push(token);
-      console.log(`✅ Token saved to memory: ${mintAddress}`);
+      console.log(`✅ Token saved to memory`);
     }
 
-    console.log(`🎉 Token created successfully by ${walletAddress.slice(0, 8)}...`);
+    console.log('🔥 ============================================');
+    console.log(`🔥 TOKEN LAUNCHED BY ${walletAddress.slice(0, 8)}...`);
+    console.log('🔥 ============================================\n');
 
     res.json({ 
       success: true, 
-      token 
+      token
     });
 
   } catch (error) {
@@ -232,7 +344,7 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
   }
 });
 
-// Obtener todos los tokens (con límite opcional)
+// Obtener todos los tokens
 app.get('/api/tokens', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
@@ -240,21 +352,18 @@ app.get('/api/tokens', async (req, res) => {
     let tokens = [];
     
     if (db) {
-      // Desde MongoDB
       tokens = await db.collection('tokens')
         .find({})
         .sort({ createdAt: -1 })
         .limit(limit)
         .toArray();
-      console.log(`📊 Returning ${tokens.length} tokens from MongoDB`);
     } else {
-      // Desde memoria
       tokens = (global.tokensMemory || [])
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, limit);
-      console.log(`📊 Returning ${tokens.length} tokens from memory`);
     }
 
+    console.log(`📊 Returning ${tokens.length} tokens`);
     res.json({ tokens });
     
   } catch (error) {
@@ -263,7 +372,7 @@ app.get('/api/tokens', async (req, res) => {
   }
 });
 
-// Obtener token específico por mintAddress
+// Obtener token específico
 app.get('/api/tokens/:mintAddress', async (req, res) => {
   try {
     const { mintAddress } = req.params;
@@ -280,7 +389,6 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
       return res.status(404).json({ error: 'Token not found' });
     }
 
-    console.log(`📊 Returning token: ${mintAddress}`);
     res.json({ token });
     
   } catch (error) {
@@ -289,33 +397,29 @@ app.get('/api/tokens/:mintAddress', async (req, res) => {
   }
 });
 
-// Obtener datos de DexScreener
+// DexScreener data
 app.get('/api/dexscreener/:mintAddress', async (req, res) => {
   try {
     const { mintAddress } = req.params;
     
     const response = await axios.get(
-      `${DEXSCREENER_API}/tokens/${mintAddress}`,
+      `https://api.dexscreener.com/latest/dex/tokens/${mintAddress}`,
       { timeout: 5000 }
     );
 
     res.json(response.data);
     
   } catch (error) {
-    console.error('❌ Error fetching DexScreener data:', error.message);
+    console.error('❌ DexScreener error:', error.message);
     res.json({ pairs: [] });
   }
 });
 
-// Obtener holders de un token
+// Holders data
 app.get('/api/holders/:mintAddress', async (req, res) => {
   try {
     const { mintAddress } = req.params;
     
-    if (!HELIUS_RPC_URL) {
-      return res.json({ result: { value: [] } });
-    }
-
     const response = await axios.post(
       HELIUS_RPC_URL,
       {
@@ -330,12 +434,12 @@ app.get('/api/holders/:mintAddress', async (req, res) => {
     res.json(response.data);
     
   } catch (error) {
-    console.error('❌ Error fetching holders:', error.message);
+    console.error('❌ Holders error:', error.message);
     res.json({ result: { value: [] } });
   }
 });
 
-// Manejo de errores 404
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
@@ -343,13 +447,12 @@ app.use((req, res) => {
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log('\n╔═══════════════════════════════════════╗');
-  console.log('║   🚀 MAYHEM LAUNCHPAD BACKEND        ║');
+  console.log('║   🔥 MAYHEM LAUNCHPAD BACKEND 🔥     ║');
   console.log(`║   Server running on port ${PORT}       ║`);
-  console.log(`║   Environment: ${process.env.NODE_ENV || 'development'}          ║`);
+  console.log('║   ⚡ MAYHEM MODE: ENABLED            ║');
   console.log('╚═══════════════════════════════════════╝\n');
-  console.log('📍 Endpoints:');
-  console.log(`   GET  ${API_URL}/api/health`);
-  console.log(`   POST ${API_URL}/api/create-token`);
+  console.log('🔥 Endpoints:');
+  console.log(`   POST ${API_URL}/api/create-token (MAYHEM)`);
   console.log(`   GET  ${API_URL}/api/tokens`);
   console.log(`   GET  ${API_URL}/api/tokens/:mintAddress`);
   console.log(`   GET  ${API_URL}/api/dexscreener/:mintAddress`);
@@ -357,7 +460,7 @@ app.listen(PORT, () => {
   console.log('');
 });
 
-// Manejo de errores no capturados
+// Error handlers
 process.on('unhandledRejection', (error) => {
   console.error('💥 Unhandled rejection:', error);
 });
