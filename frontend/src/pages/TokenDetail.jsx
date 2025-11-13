@@ -15,7 +15,6 @@ import {
   Check
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { API_URL } from '../config';
 
 const TokenDetail = () => {
   const { mintAddress } = useParams();
@@ -42,16 +41,16 @@ const TokenDetail = () => {
       setLoading(true);
 
       // Fetch token from our backend
-      const tokenResponse = await axios.get(`${API_URL}/api/tokens/${mintAddress}`);
+      const tokenResponse = await axios.get(`/api/tokens/${mintAddress}`);
       setToken(tokenResponse.data.token);
 
       // Fetch DexScreener data
-      const dexResponse = await axios.get(`${API_URL}/api/dexscreener/${mintAddress}`);
+      const dexResponse = await axios.get(`/api/dexscreener/${mintAddress}`);
       setTokenData(dexResponse.data);
 
       // Fetch holders
       try {
-        const holdersResponse = await axios.get(`${API_URL}/api/holders/${mintAddress}`);
+        const holdersResponse = await axios.get(`/api/holders/${mintAddress}`);
         setHolders(holdersResponse.data.result?.value || []);
       } catch (error) {
         console.error('Error fetching holders:', error);

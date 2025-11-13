@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { ExternalLink, TrendingUp, Clock, Flame, Search, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { API_URL } from '../config';
 
 const Dashboard = () => {
   const [tokens, setTokens] = useState([]);
@@ -18,7 +17,7 @@ const Dashboard = () => {
   const fetchTokens = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/api/tokens`);
+      const response = await axios.get('/api/tokens');
       setTokens(response.data.tokens);
       
       // Fetch DexScreener data for each token
@@ -35,7 +34,7 @@ const Dashboard = () => {
 
   const fetchTokenData = async (mintAddress) => {
     try {
-      const response = await axios.get(`${API_URL}/api/dexscreener/${mintAddress}`);
+      const response = await axios.get(`/api/dexscreener/${mintAddress}`);
       if (response.data.pairs && response.data.pairs.length > 0) {
         const pair = response.data.pairs[0];
         setTokenData(prev => ({
