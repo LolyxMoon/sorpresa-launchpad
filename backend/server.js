@@ -88,12 +88,13 @@ function verifyWalletSignature(walletAddress, signature, message) {
 }
 
 // ============================================
-// FUNCIÓN PARA CREAR TOKEN CON MAYHEM MODE
+// FUNCIÓN PARA PREPARAR TOKEN (TRADE-LOCAL)
 // ============================================
 
-async function createMayhemToken(tokenCreationData, imageBuffer) {
+async function prepareMayhemToken(tokenCreationData, imageBuffer) {
   try {
-    console.log('🔥 Creating MAYHEM MODE token on Pump.fun...');
+    console.log('🔥 Preparing MAYHEM MODE token transaction...');
+    console.log(`   For wallet: ${tokenCreationData.creator}`);
     
     // 1. Subir metadata a IPFS
     const formData = new FormData();
@@ -137,13 +138,14 @@ async function createMayhemToken(tokenCreationData, imageBuffer) {
       uri: metadataUri
     };
 
-    // 4. Crear transacción con MAYHEM MODE activado
-    console.log('🔥 Creating MAYHEM transaction...');
+    // 4. Preparar transacción con MAYHEM MODE (TRADE-LOCAL)
+    console.log('🔥 Preparing MAYHEM transaction for user to sign...');
     
     const createPayload = {
+      publicKey: tokenCreationData.creator, // ⭐ WALLET DEL USUARIO
       action: 'create',
       tokenMetadata: tokenMetadata,
-      mint: bs58.encode(mintKeypair.secretKey), // Enviar como base58
+      mint: bs58.encode(mintKeypair.secretKey),
       denominatedInSol: 'true',
       amount: parseFloat(tokenCreationData.devBuyAmount || 0),
       slippage: parseInt(tokenCreationData.slippage || 10),
@@ -153,6 +155,7 @@ async function createMayhemToken(tokenCreationData, imageBuffer) {
     };
 
     console.log('📝 Payload:', {
+      publicKey: createPayload.publicKey,
       action: createPayload.action,
       tokenMetadata: createPayload.tokenMetadata,
       mint: '[SECRET KEY HIDDEN]',
@@ -164,53 +167,41 @@ async function createMayhemToken(tokenCreationData, imageBuffer) {
       isMayhemMode: createPayload.isMayhemMode
     });
 
-    console.log('📡 Sending request to PumpPortal...');
-    console.log(`   URL: https://pumpportal.fun/api/trade?api-key=${PUMPPORTAL_API_KEY.slice(0, 20)}...`);
+    console.log('📡 Calling PumpPortal TRADE-LOCAL...');
 
+    // ⭐ USAR TRADE-LOCAL en vez de TRADE
     const createResponse = await axios.post(
-      `https://pumpportal.fun/api/trade?api-key=${PUMPPORTAL_API_KEY}`,
+      `https://pumpportal.fun/api/trade-local?api-key=${PUMPPORTAL_API_KEY}`,
       createPayload,
       {
         headers: {
           'Content-Type': 'application/json'
         },
-        timeout: 60000 // 60 segundos
+        timeout: 60000
       }
     );
 
     console.log('✅ PumpPortal Response Status:', createResponse.status);
-    console.log('📦 Full Response Data:', JSON.stringify(createResponse.data, null, 2));
+    console.log('📦 Response keys:', Object.keys(createResponse.data));
 
-    // Extraer signature de diferentes posibles campos
-    const signature = createResponse.data.signature || 
-                     createResponse.data.txid || 
-                     createResponse.data.transaction || 
-                     createResponse.data.hash ||
-                     null;
+    const encodedTransaction = createResponse.data;
 
-    if (!signature) {
-      console.log('⚠️ WARNING: No signature found in response!');
-      console.log('📦 Response keys:', Object.keys(createResponse.data));
-    }
-
-    console.log('✅ Transaction created on PumpPortal');
+    console.log('✅ Transaction prepared successfully');
     console.log('   Mint:', mintAddress);
-    console.log('   Signature:', signature || 'NOT FOUND');
+    console.log('   Transaction ready for user signature');
 
     return {
       success: true,
       mintAddress: mintAddress,
-      signature: signature,
+      encodedTransaction: encodedTransaction,
       metadataUri: metadataUri,
-      mayhemMode: true,
-      rawResponse: createResponse.data // Guardar respuesta completa para debug
+      mayhemMode: true
     };
 
   } catch (error) {
-    console.error('❌ Error creating Mayhem token:', error.response?.data || error.message);
+    console.error('❌ Error preparing Mayhem token:', error.response?.data || error.message);
     console.error('📦 Error Response:', JSON.stringify(error.response?.data, null, 2));
-    console.error('📦 Error Status:', error.response?.status);
-    throw new Error(error.response?.data?.message || error.message || 'Failed to create token on Pump.fun');
+    throw new Error(error.response?.data?.message || error.message || 'Failed to prepare token');
   }
 }
 
@@ -223,13 +214,12 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok',
     mayhemMode: true,
+    tradeLocal: true,
     timestamp: new Date().toISOString(),
-    mongodb: db ? 'connected' : 'in-memory',
-    pumpportalKey: PUMPPORTAL_API_KEY ? `${PUMPPORTAL_API_KEY.slice(0, 10)}...` : 'NOT SET'
+    mongodb: db ? 'connected' : 'in-memory'
   });
 });
-
-// Crear token con Mayhem Mode
+// Preparar token (devuelve transacción para firmar)
 app.post('/api/create-token', upload.single('image'), async (req, res) => {
   try {
     console.log('🔥 ============================================');
@@ -267,6 +257,7 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
     }
 
     console.log('✅ Wallet verified!');
+    console.log(`   User wallet: ${walletAddress}`);
 
     // Verificar imagen
     if (!req.file) {
@@ -290,7 +281,7 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
 
     // Preparar datos del token
     const tokenCreationData = {
-      creator: walletAddress,
+      creator: walletAddress, // ⭐ WALLET DEL USUARIO
       name,
       symbol,
       description,
@@ -302,26 +293,27 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
       priorityFee: priorityFee || '0.0005'
     };
 
-    // Crear token en Pump.fun con MAYHEM MODE
-    console.log('🔥 Initiating MAYHEM MODE creation...');
+    // Preparar transacción en PumpPortal
+    console.log('🔥 Preparing transaction for user to sign...');
+    console.log(`   User will pay from: ${walletAddress}`);
     
     let pumpFunResult;
     try {
-      pumpFunResult = await createMayhemToken(tokenCreationData, req.file.buffer);
+      pumpFunResult = await prepareMayhemToken(tokenCreationData, req.file.buffer);
     } catch (error) {
-      console.error('❌ Pump.fun creation failed:', error.message);
+      console.error('❌ PumpPortal preparation failed:', error.message);
       return res.status(500).json({ 
-        error: 'Failed to create token: ' + error.message 
+        error: 'Failed to prepare token: ' + error.message 
       });
     }
 
-    const { mintAddress, signature: txSignature, metadataUri, rawResponse } = pumpFunResult;
+    const { mintAddress, encodedTransaction, metadataUri } = pumpFunResult;
 
-    console.log('🎉 MAYHEM MODE TOKEN CREATED!');
-    console.log(`   Mint: ${mintAddress}`);
-    console.log(`   Transaction: https://solscan.io/tx/${txSignature || 'undefined'}`);
+    console.log('✅ Transaction prepared!');
+    console.log(`   Mint Address: ${mintAddress}`);
+    console.log(`   User must sign and send transaction`);
     
-    // Guardar en base de datos
+    // Guardar token como "pending" en base de datos
     const token = {
       mintAddress,
       name,
@@ -329,18 +321,15 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
       description,
       imageUrl: localImageUrl,
       metadataUri,
-      creator: walletAddress,
+      creator: walletAddress, // ⭐ WALLET DEL USUARIO
       twitter: twitter || null,
       telegram: telegram || null,
       website: website || null,
       pumpFunUrl: `https://pump.fun/${mintAddress}`,
       solscanUrl: `https://solscan.io/token/${mintAddress}`,
-      transactionUrl: txSignature ? `https://solscan.io/tx/${txSignature}` : null,
       devBuyAmount: devBuyAmount || '0',
       mayhemMode: true,
-      status: txSignature ? 'confirmed' : 'pending',
-      signature: txSignature || null,
-      rawPumpResponse: rawResponse, // Guardar respuesta completa para debug
+      status: 'pending', // Pendiente de firma del usuario
       createdAt: new Date()
     };
 
@@ -348,30 +337,75 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
     if (db) {
       try {
         await db.collection('tokens').insertOne(token);
-        console.log(`✅ Token saved to MongoDB`);
+        console.log(`✅ Token saved as pending in MongoDB`);
       } catch (error) {
         console.error('⚠️ Error saving to MongoDB:', error.message);
       }
     } else {
       if (!global.tokensMemory) global.tokensMemory = [];
       global.tokensMemory.push(token);
-      console.log(`✅ Token saved to memory`);
+      console.log(`✅ Token saved as pending in memory`);
     }
 
     console.log('🔥 ============================================');
-    console.log(`🔥 TOKEN LAUNCHED BY ${walletAddress.slice(0, 8)}...`);
+    console.log(`🔥 TRANSACTION READY FOR ${walletAddress.slice(0, 8)}...`);
     console.log('🔥 ============================================\n');
 
+    // ⭐ DEVOLVER TRANSACCIÓN PARA QUE EL USUARIO FIRME
     res.json({ 
       success: true, 
-      token
+      token,
+      requiresSignature: true,
+      encodedTransaction // El frontend hará que el usuario firme esto
     });
 
   } catch (error) {
-    console.error('❌ Error creating token:', error);
+    console.error('❌ Error preparing token:', error);
     res.status(500).json({ 
-      error: error.message || 'Error creating token' 
+      error: error.message || 'Error preparing token' 
     });
+  }
+});
+
+// Confirmar token después de que el usuario firmó
+app.post('/api/confirm-token', express.json(), async (req, res) => {
+  try {
+    const { mintAddress, signature } = req.body;
+
+    if (!mintAddress || !signature) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log(`✅ Token confirmed: ${mintAddress}`);
+    console.log(`   Signature: ${signature}`);
+
+    // Actualizar token en base de datos
+    if (db) {
+      await db.collection('tokens').updateOne(
+        { mintAddress },
+        { 
+          $set: { 
+            status: 'confirmed',
+            signature,
+            transactionUrl: `https://solscan.io/tx/${signature}`,
+            confirmedAt: new Date()
+          }
+        }
+      );
+    } else {
+      const tokenIndex = (global.tokensMemory || []).findIndex(t => t.mintAddress === mintAddress);
+      if (tokenIndex !== -1) {
+        global.tokensMemory[tokenIndex].status = 'confirmed';
+        global.tokensMemory[tokenIndex].signature = signature;
+        global.tokensMemory[tokenIndex].transactionUrl = `https://solscan.io/tx/${signature}`;
+      }
+    }
+
+    res.json({ success: true });
+
+  } catch (error) {
+    console.error('❌ Error confirming token:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -480,16 +514,9 @@ app.listen(PORT, () => {
   console.log('\n╔═══════════════════════════════════════╗');
   console.log('║   🔥 MAYHEM LAUNCHPAD BACKEND 🔥     ║');
   console.log(`║   Server running on port ${PORT}       ║`);
-  console.log('║   ⚡ MAYHEM MODE: ENABLED            ║');
+  console.log('║   ⚡ TRADE-LOCAL MODE ENABLED        ║');
   console.log('╚═══════════════════════════════════════╝\n');
-  console.log('🔥 Endpoints:');
-  console.log(`   POST ${API_URL}/api/create-token (MAYHEM)`);
-  console.log(`   GET  ${API_URL}/api/tokens`);
-  console.log(`   GET  ${API_URL}/api/tokens/:mintAddress`);
-  console.log(`   GET  ${API_URL}/api/dexscreener/:mintAddress`);
-  console.log(`   GET  ${API_URL}/api/holders/:mintAddress`);
-  console.log('');
-  console.log('🔑 PumpPortal Key:', PUMPPORTAL_API_KEY ? `${PUMPPORTAL_API_KEY.slice(0, 10)}...` : 'NOT SET');
+  console.log('🔥 User wallets will sign transactions');
   console.log('');
 });
 
