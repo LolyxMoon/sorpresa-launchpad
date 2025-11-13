@@ -7,7 +7,7 @@ import { Upload, Flame, AlertCircle, CheckCircle, ExternalLink } from 'lucide-re
 import { API_URL } from '../config';
 
 const CreateToken = () => {
-  const { connected } = useWallet();
+  const { connected, publicKey, signMessage } = useWallet();
   const [loading, setLoading] = useState(false);
   const [createdToken, setCreatedToken] = useState(null);
   
@@ -26,6 +26,15 @@ const CreateToken = () => {
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+
+  // Convertir Uint8Array a base64 (sin usar Buffer)
+  const uint8ArrayToBase64 = (bytes) => {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -55,7 +64,7 @@ const CreateToken = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!connected) {
+    if (!connected || !publicKey) {
       toast.error('Please connect your wallet first');
       return;
     }
@@ -66,10 +75,31 @@ const CreateToken = () => {
     }
 
     setLoading(true);
-    const loadingToast = toast.loading('Creating your token...');
+    const loadingToast = toast.loading('Preparing token creation...');
 
     try {
+      // Step 1: Sign message to verify wallet ownership
+      const message = new TextEncoder().encode(
+        `Create token on Sorpresa Launchpad\nWallet: ${publicKey.toString()}\nTimestamp: ${Date.now()}`
+      );
+
+      let signature;
+      try {
+        signature = await signMessage(message);
+        toast.loading('Wallet verified, uploading data...', { id: loadingToast });
+      } catch (error) {
+        toast.error('You must sign the message to create a token', { id: loadingToast });
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Prepare form data
       const formDataToSend = new FormData();
+      
+      // Add wallet info (sin usar Buffer, usando base64 del navegador)
+      formDataToSend.append('walletAddress', publicKey.toString());
+      formDataToSend.append('signature', uint8ArrayToBase64(signature));
+      formDataToSend.append('message', uint8ArrayToBase64(message));
       
       // Add all form fields
       Object.keys(formData).forEach(key => {
@@ -79,6 +109,9 @@ const CreateToken = () => {
       // Add image
       formDataToSend.append('image', imageFile);
 
+      toast.loading('Creating your token...', { id: loadingToast });
+
+      // Step 3: Send to backend
       const response = await axios.post(`${API_URL}/api/create-token`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data'
@@ -121,7 +154,9 @@ const CreateToken = () => {
           </div>
           <h2 className="text-3xl font-bold mb-4">Connect Your Wallet</h2>
           <p className="text-gray-400 mb-8">
-            You need to connect your Solana wallet to create a token
+            You need to connect your Solana wallet to create a token. 
+            <br />
+            <strong>You will use YOUR wallet and pay YOUR own fees.</strong>
           </p>
           <WalletMultiButton className="!bg-mayhem-600 hover:!bg-mayhem-700 !rounded-lg" />
           <p className="text-sm text-gray-500 mt-4">
@@ -158,6 +193,10 @@ const CreateToken = () => {
               <div className="col-span-2">
                 <div className="text-sm text-gray-400 mb-1">Mint Address</div>
                 <div className="font-mono text-sm break-all">{createdToken.mintAddress}</div>
+              </div>
+              <div className="col-span-2">
+                <div className="text-sm text-gray-400 mb-1">Created by</div>
+                <div className="font-mono text-sm break-all">{createdToken.creator}</div>
               </div>
             </div>
           </div>
@@ -200,16 +239,21 @@ const CreateToken = () => {
       <div className="text-center mb-8">
         <h1 className="text-4xl font-bold mb-4">Launch Your Token</h1>
         <p className="text-gray-400">Fill in the details to launch your token with Mayhem Mode</p>
+        <p className="text-sm text-mayhem-400 mt-2">
+          Connected: {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
+        </p>
       </div>
 
       {/* Warning Banner */}
       <div className="bg-orange-500 bg-opacity-10 border border-orange-500 rounded-lg p-4 mb-6 flex items-start space-x-3">
         <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
         <div className="text-sm">
-          <div className="font-bold text-orange-500 mb-1">Mayhem Mode Notice</div>
+          <div className="font-bold text-orange-500 mb-1">Important Notice</div>
           <p className="text-gray-300">
-            This will create a token with Mayhem Mode enabled. An AI agent will trade your token for 24 hours. 
-            Make sure you understand the risks before launching.
+            • You will use YOUR wallet to create this token<br />
+            • YOU will pay all fees (creation + dev buy + priority fee)<br />
+            • Make sure you have enough SOL in your wallet<br />
+            • The token will be created with Mayhem Mode enabled
           </p>
         </div>
       </div>
@@ -360,7 +404,7 @@ const CreateToken = () => {
                 min="0"
                 className="input-field"
               />
-              <p className="text-sm text-gray-400 mt-1">Amount of SOL to buy on creation</p>
+              <p className="text-sm text-gray-400 mt-1">Amount of SOL to buy on creation (from YOUR wallet)</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -430,6 +474,10 @@ const CreateToken = () => {
             </>
           )}
         </button>
+
+        <p className="text-center text-sm text-gray-400">
+          By creating a token, you confirm that you have enough SOL to cover all fees
+        </p>
       </form>
     </div>
   );

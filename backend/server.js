@@ -13,7 +13,7 @@ const app = express();
 
 // Configuración de CORS
 app.use(cors({
-  origin: 'https://www.sorpresa.fun',
+  origin: ['https://www.sorpresa.fun', 'https://sorpresa.fun', 'https://sorpresa-launchpad.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
