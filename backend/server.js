@@ -45,19 +45,19 @@ app.use('/uploads', (req, res, next) => {
 // Variables de entorno
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI;
-const PUMPPORTAL_API_KEY = process.env.PUMPPORTAL_API_KEY || '5x8n8y1ge5338v3ncxtq8nud8wtketut6h26muabecwm2xv76t5ppntn7184ukaragqmmgb49x0pcrb7b98ppp22chrjpuv5a95k4mure1h4wtkeaxr44gahetaqgpaa6hrmcwkm84yku9t5nau3bett7mjuucmnpwtabc88x46gwaq9nt2yktm6ctqcnk29h34pw24dn0kuf8tmb';
-const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=0b23dead-e221-43e0-9e34-283af384a9b0';
+const PUMPPORTAL_API_KEY = process.env.PUMPPORTAL_API_KEY;
+const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
 const API_URL = process.env.API_URL || 'http://localhost:3001';
+
+console.log('🔑 API Key present:', !!PUMPPORTAL_API_KEY);
+console.log('🌐 RPC URL:', HELIUS_RPC_URL);
 
 // Base de datos
 let db = null;
 
 // Conectar a MongoDB
 if (MONGODB_URI) {
-  mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  mongoose.connect(MONGODB_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB');
     db = mongoose.connection.db;
@@ -142,27 +142,28 @@ async function prepareMayhemToken(tokenCreationData, imageBuffer) {
       uri: metadataUri
     };
 
-    // 4. Preparar transacción con MAYHEM MODE (TRADE-LOCAL)
-    console.log('🔥 Preparing MAYHEM transaction for user to sign...');
+    // 4. Preparar transacción con MAYHEM MODE
+    console.log('🔥 Preparing MAYHEM transaction...');
     
+    // ⭐ CAMBIOS CLAVE: Boolean en vez de string
     const createPayload = {
-      publicKey: tokenCreationData.creator, // ⭐ WALLET DEL USUARIO
+      publicKey: tokenCreationData.creator,
       action: 'create',
       tokenMetadata: tokenMetadata,
       mint: bs58.encode(mintKeypair.secretKey),
-      denominatedInSol: 'true',
+      denominatedInSol: true, // ⭐ Boolean
       amount: parseFloat(tokenCreationData.devBuyAmount || 0),
       slippage: parseInt(tokenCreationData.slippage || 10),
       priorityFee: parseFloat(tokenCreationData.priorityFee || 0.0005),
       pool: 'pump',
-      isMayhemMode: 'true'
+      isMayhemMode: true // ⭐ Boolean en vez de 'true'
     };
 
-    console.log('📝 Payload:', {
+    console.log('📝 Request to PumpPortal:', {
       publicKey: createPayload.publicKey,
       action: createPayload.action,
       tokenMetadata: createPayload.tokenMetadata,
-      mint: '[SECRET KEY HIDDEN]',
+      mint: '[HIDDEN]',
       denominatedInSol: createPayload.denominatedInSol,
       amount: createPayload.amount,
       slippage: createPayload.slippage,
@@ -172,8 +173,8 @@ async function prepareMayhemToken(tokenCreationData, imageBuffer) {
     });
 
     console.log('📡 Calling PumpPortal TRADE-LOCAL...');
+    console.log('🔗 URL:', `https://pumpportal.fun/api/trade-local?api-key=${PUMPPORTAL_API_KEY ? '[PRESENT]' : '[MISSING]'}`);
 
-    // ⭐ USAR TRADE-LOCAL en vez de TRADE
     const createResponse = await axios.post(
       `https://pumpportal.fun/api/trade-local?api-key=${PUMPPORTAL_API_KEY}`,
       createPayload,
@@ -186,13 +187,13 @@ async function prepareMayhemToken(tokenCreationData, imageBuffer) {
     );
 
     console.log('✅ PumpPortal Response Status:', createResponse.status);
-    console.log('📦 Response keys:', Object.keys(createResponse.data));
+    console.log('📦 Response type:', typeof createResponse.data);
+    console.log('📦 Response keys:', Object.keys(createResponse.data || {}));
 
     const encodedTransaction = createResponse.data;
 
     console.log('✅ Transaction prepared successfully');
     console.log('   Mint:', mintAddress);
-    console.log('   Transaction ready for user signature');
 
     return {
       success: true,
@@ -203,12 +204,14 @@ async function prepareMayhemToken(tokenCreationData, imageBuffer) {
     };
 
   } catch (error) {
-    console.error('❌ Error preparing Mayhem token:', error.response?.data || error.message);
+    console.error('❌ Error preparing Mayhem token:', error.message);
+    console.error('📦 Status Code:', error.response?.status);
     console.error('📦 Error Response:', JSON.stringify(error.response?.data, null, 2));
+    console.error('📦 Error Headers:', JSON.stringify(error.response?.headers, null, 2));
+    
     throw new Error(error.response?.data?.message || error.message || 'Failed to prepare token');
   }
 }
-
 // ============================================
 // ENDPOINTS
 // ============================================
@@ -220,9 +223,11 @@ app.get('/api/health', (req, res) => {
     mayhemMode: true,
     tradeLocal: true,
     timestamp: new Date().toISOString(),
-    mongodb: db ? 'connected' : 'in-memory'
+    mongodb: db ? 'connected' : 'in-memory',
+    apiKeyPresent: !!PUMPPORTAL_API_KEY
   });
 });
+
 // Preparar token (devuelve transacción para firmar)
 app.post('/api/create-token', upload.single('image'), async (req, res) => {
   try {
@@ -285,7 +290,7 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
 
     // Preparar datos del token
     const tokenCreationData = {
-      creator: walletAddress, // ⭐ WALLET DEL USUARIO
+      creator: walletAddress,
       name,
       symbol,
       description,
@@ -325,7 +330,7 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
       description,
       imageUrl: localImageUrl,
       metadataUri,
-      creator: walletAddress, // ⭐ WALLET DEL USUARIO
+      creator: walletAddress,
       twitter: twitter || null,
       telegram: telegram || null,
       website: website || null,
@@ -333,7 +338,7 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
       solscanUrl: `https://solscan.io/token/${mintAddress}`,
       devBuyAmount: devBuyAmount || '0',
       mayhemMode: true,
-      status: 'pending', // Pendiente de firma del usuario
+      status: 'pending',
       createdAt: new Date()
     };
 
@@ -355,12 +360,11 @@ app.post('/api/create-token', upload.single('image'), async (req, res) => {
     console.log(`🔥 TRANSACTION READY FOR ${walletAddress.slice(0, 8)}...`);
     console.log('🔥 ============================================\n');
 
-    // ⭐ DEVOLVER TRANSACCIÓN PARA QUE EL USUARIO FIRME
     res.json({ 
       success: true, 
       token,
       requiresSignature: true,
-      encodedTransaction // El frontend hará que el usuario firme esto
+      encodedTransaction
     });
 
   } catch (error) {
@@ -383,7 +387,6 @@ app.post('/api/confirm-token', express.json(), async (req, res) => {
     console.log(`✅ Token confirmed: ${mintAddress}`);
     console.log(`   Signature: ${signature}`);
 
-    // Actualizar token en base de datos
     if (db) {
       await db.collection('tokens').updateOne(
         { mintAddress },
