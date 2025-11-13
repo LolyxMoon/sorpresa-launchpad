@@ -33,7 +33,8 @@ function App() {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      {/* ⭐ CAMBIO: autoConnect={false} para evitar wallets pegadas */}
+      <WalletProvider wallets={wallets} autoConnect={false}>
         <WalletModalProvider>
           <Router>
             <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black">
