@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import React, { useState, useEffect } from 'react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { Upload, Flame, AlertCircle, CheckCircle, ExternalLink } from 'lucide-react';
+import { Upload, Flame, CheckCircle, ExternalLink, AlertTriangle } from 'lucide-react';
 import { API_URL } from '../config';
 
 const CreateToken = () => {
   const { connected, publicKey, signMessage } = useWallet();
+  const { connection } = useConnection();
   const [loading, setLoading] = useState(false);
   const [createdToken, setCreatedToken] = useState(null);
+  const [balance, setBalance] = useState(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -18,13 +21,33 @@ const CreateToken = () => {
     twitter: '',
     telegram: '',
     website: '',
-    devBuyAmount: '0.1',
+    devBuyAmount: '0.01',
     slippage: '10',
     priorityFee: '0.0005'
   });
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+
+  // Verificar balance cuando se conecta
+  useEffect(() => {
+    if (connected && publicKey) {
+      checkBalance();
+    } else {
+      setBalance(null);
+    }
+  }, [connected, publicKey]);
+
+  const checkBalance = async () => {
+    try {
+      const bal = await connection.getBalance(publicKey);
+      const solBalance = bal / LAMPORTS_PER_SOL;
+      setBalance(solBalance);
+      console.log('Wallet balance:', solBalance, 'SOL');
+    } catch (error) {
+      console.error('Error checking balance:', error);
+    }
+  };
 
   // Convertir Uint8Array a base64 sin usar Buffer
   const uint8ArrayToBase64 = (bytes) => {
@@ -68,6 +91,15 @@ const CreateToken = () => {
       return;
     }
 
+    // Verificar balance
+    const estimatedCost = parseFloat(formData.devBuyAmount) + parseFloat(formData.priorityFee) + 0.025;
+    if (balance !== null && balance < estimatedCost) {
+      toast.error(`Insufficient SOL. You have ${balance.toFixed(4)} SOL but need at least ${estimatedCost.toFixed(4)} SOL`, {
+        duration: 5000
+      });
+      return;
+    }
+
     if (!imageFile) {
       toast.error('Please upload a token image');
       return;
@@ -84,10 +116,17 @@ const CreateToken = () => {
 
       let signature;
       try {
+        console.log('Requesting signature from wallet:', publicKey.toString());
         signature = await signMessage(message);
+        console.log('Signature received');
         toast.loading('✅ Wallet verified, creating token...', { id: loadingToast });
       } catch (error) {
-        toast.error('You must sign the message to create a token', { id: loadingToast });
+        console.error('Signature error:', error);
+        if (error.message?.includes('User rejected')) {
+          toast.error('You must sign the message to create a token. Please try again.', { id: loadingToast });
+        } else {
+          toast.error('Failed to sign message: ' + error.message, { id: loadingToast });
+        }
         setLoading(false);
         return;
       }
@@ -110,16 +149,19 @@ const CreateToken = () => {
 
       toast.loading('🔥 Launching MAYHEM MODE token on Pump.fun...', { id: loadingToast });
 
-      // Paso 3: Enviar al backend (backend crea el token directamente)
+      // Paso 3: Enviar al backend
       const response = await axios.post(`${API_URL}/api/create-token`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data'
         },
-        timeout: 60000 // 60 segundos timeout
+        timeout: 60000
       });
 
       toast.success('🔥 MAYHEM MODE token created successfully! 🎉', { id: loadingToast });
       setCreatedToken(response.data.token);
+      
+      // Actualizar balance
+      checkBalance();
       
       // Reset form
       setFormData({
@@ -129,7 +171,7 @@ const CreateToken = () => {
         twitter: '',
         telegram: '',
         website: '',
-        devBuyAmount: '0.1',
+        devBuyAmount: '0.01',
         slippage: '10',
         priorityFee: '0.0005'
       });
@@ -138,8 +180,24 @@ const CreateToken = () => {
 
     } catch (error) {
       console.error('Error creating token:', error);
-      const errorMsg = error.response?.data?.error || error.message || 'Error creating token';
-      toast.error(`Failed: ${errorMsg}`, { id: loadingToast });
+      
+      let errorMsg = 'Error creating token';
+      
+      if (error.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error.message?.includes('Insufficient funds')) {
+        errorMsg = `Insufficient SOL. You need at least ${estimatedCost.toFixed(4)} SOL.`;
+      } else if (error.message?.includes('User rejected')) {
+        errorMsg = 'You must sign both popups to create the token.';
+      } else if (error.message?.includes('timeout')) {
+        errorMsg = 'Request timeout. Please try again.';
+      } else if (error.message?.includes('Network Error')) {
+        errorMsg = 'Network error. Please check your connection.';
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      
+      toast.error(errorMsg, { id: loadingToast, duration: 5000 });
     } finally {
       setLoading(false);
     }
@@ -210,7 +268,6 @@ const CreateToken = () => {
             </div>
           </div>
 
-          {/* Mayhem Status */}
           <div className="bg-mayhem-950 border border-mayhem-800 rounded-lg p-4 mb-6">
             <div className="flex items-center justify-center space-x-2 mb-2">
               <Flame className="w-5 h-5 text-mayhem-500 animate-pulse" />
@@ -255,6 +312,9 @@ const CreateToken = () => {
     );
   }
 
+  const estimatedCost = parseFloat(formData.devBuyAmount) + parseFloat(formData.priorityFee) + 0.025;
+  const hasEnoughSOL = balance === null || balance >= estimatedCost;
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="text-center mb-8">
@@ -263,10 +323,32 @@ const CreateToken = () => {
           Launch MAYHEM MODE Token
         </h1>
         <p className="text-gray-400">AI will trade your token for 24 hours automatically</p>
-        <p className="text-sm text-mayhem-400 mt-2">
-          Connected: {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
-        </p>
+        <div className="flex items-center justify-center gap-4 mt-2">
+          <p className="text-sm text-mayhem-400">
+            Connected: {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
+          </p>
+          {balance !== null && (
+            <p className={`text-sm font-bold ${hasEnoughSOL ? 'text-green-500' : 'text-red-500'}`}>
+              Balance: {balance.toFixed(4)} SOL
+            </p>
+          )}
+        </div>
       </div>
+
+      {/* Balance Warning */}
+      {balance !== null && !hasEnoughSOL && (
+        <div className="bg-red-500 bg-opacity-10 border border-red-500 rounded-lg p-4 mb-6 flex items-start space-x-3">
+          <AlertTriangle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <div className="font-bold text-red-500 mb-1">Insufficient Balance</div>
+            <p className="text-gray-300">
+              You have {balance.toFixed(4)} SOL but need at least {estimatedCost.toFixed(4)} SOL.
+              <br />
+              Please add more SOL or reduce the Dev Buy Amount.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Warning Banner */}
       <div className="bg-mayhem-500 bg-opacity-10 border border-mayhem-500 rounded-lg p-4 mb-6 flex items-start space-x-3">
@@ -278,7 +360,6 @@ const CreateToken = () => {
             <li>• <strong>AI trades for 24 hours</strong> - Autonomous agent creates volume</li>
             <li>• <strong>Random buy/sell actions</strong> - Unpredictable trading pattern</li>
             <li>• <strong>Unsold tokens burned</strong> - After 24h, remaining AI tokens destroyed</li>
-            <li>• <strong>No protocol fees on AI trades</strong> - AI trading is completely free</li>
           </ul>
         </div>
       </div>
@@ -359,7 +440,7 @@ const CreateToken = () => {
                 name="description"
                 value={formData.description}
                 onChange={handleInputChange}
-                placeholder="Describe your token and what makes it special..."
+                placeholder="Describe your token..."
                 className="input-field"
                 rows="4"
                 required
@@ -424,13 +505,13 @@ const CreateToken = () => {
                 name="devBuyAmount"
                 value={formData.devBuyAmount}
                 onChange={handleInputChange}
-                placeholder="0.1"
+                placeholder="0.01"
                 step="0.01"
                 min="0"
                 className="input-field"
               />
               <p className="text-sm text-gray-400 mt-1">
-                Amount of SOL to buy immediately after creation (recommended: 0.1-1 SOL)
+                Estimated total: <strong className={hasEnoughSOL ? 'text-green-500' : 'text-red-500'}>{estimatedCost.toFixed(4)} SOL</strong>
               </p>
             </div>
 
@@ -469,13 +550,13 @@ const CreateToken = () => {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !hasEnoughSOL}
           className="btn-primary w-full text-lg flex items-center justify-center space-x-2 py-4"
         >
           {loading ? (
             <>
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              <span>Launching MAYHEM MODE Token...</span>
+              <span>Launching...</span>
             </>
           ) : (
             <>
@@ -486,9 +567,11 @@ const CreateToken = () => {
           )}
         </button>
 
-        <p className="text-center text-sm text-gray-400">
-          By launching, you confirm understanding of Mayhem Mode mechanics
-        </p>
+        {!hasEnoughSOL && (
+          <p className="text-center text-sm text-red-500">
+            You need at least {estimatedCost.toFixed(4)} SOL
+          </p>
+        )}
       </form>
     </div>
   );
