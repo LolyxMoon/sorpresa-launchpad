@@ -4,6 +4,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { Upload, Flame, AlertCircle, CheckCircle, ExternalLink } from 'lucide-react';
+import { API_URL } from '../config';
 
 const CreateToken = () => {
   const { connected } = useWallet();
@@ -78,7 +79,7 @@ const CreateToken = () => {
       // Add image
       formDataToSend.append('image', imageFile);
 
-      const response = await axios.post('/api/create-token', formDataToSend, {
+      const response = await axios.post(`${API_URL}/api/create-token`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
