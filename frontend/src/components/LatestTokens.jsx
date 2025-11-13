@@ -1,47 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { TrendingUp, Flame, ExternalLink } from 'lucide-react';
+import { ExternalLink, TrendingUp, Flame } from 'lucide-react';
+import { API_URL } from '../config';
 
 const LatestTokens = () => {
   const [tokens, setTokens] = useState([]);
-  const [tokenData, setTokenData] = useState({});
   const [loading, setLoading] = useState(true);
+  const [tokenData, setTokenData] = useState({});
 
   useEffect(() => {
     fetchLatestTokens();
-    // Actualizar cada 30 segundos
+    
+    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchLatestTokens, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchLatestTokens = async () => {
     try {
-      const response = await axios.get('/api/tokens');
-      const latest = response.data.tokens.slice(0, 4); // Solo los últimos 4
-      setTokens(latest);
+      const response = await axios.get(`${API_URL}/api/tokens?limit=4`);
+      const latestTokens = response.data.tokens.slice(0, 4);
+      setTokens(latestTokens);
       
-      // Fetch DexScreener data para cada token
-      latest.forEach(token => {
+      // Fetch DexScreener data for each token
+      latestTokens.forEach(token => {
         fetchTokenData(token.mintAddress);
       });
+      
+      setLoading(false);
     } catch (error) {
-      console.error('Error fetching tokens:', error);
-    } finally {
+      console.error('Error fetching latest tokens:', error);
       setLoading(false);
     }
   };
 
   const fetchTokenData = async (mintAddress) => {
     try {
-      const response = await axios.get(`/api/dexscreener/${mintAddress}`);
+      const response = await axios.get(`${API_URL}/api/dexscreener/${mintAddress}`);
       if (response.data.pairs && response.data.pairs.length > 0) {
         const pair = response.data.pairs[0];
         setTokenData(prev => ({
           ...prev,
           [mintAddress]: {
             price: pair.priceUsd,
-            volume24h: pair.volume?.h24,
             priceChange24h: pair.priceChange?.h24,
             marketCap: pair.fdv
           }
@@ -71,9 +73,9 @@ const LatestTokens = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[1, 2, 3, 4].map(i => (
           <div key={i} className="card animate-pulse">
-            <div className="bg-gray-800 h-32 rounded-lg mb-4"></div>
-            <div className="bg-gray-800 h-4 rounded mb-2"></div>
-            <div className="bg-gray-800 h-4 rounded w-3/4"></div>
+            <div className="h-32 bg-gray-800 rounded-lg mb-4"></div>
+            <div className="h-4 bg-gray-800 rounded mb-2"></div>
+            <div className="h-4 bg-gray-800 rounded w-2/3"></div>
           </div>
         ))}
       </div>
@@ -83,9 +85,11 @@ const LatestTokens = () => {
   if (tokens.length === 0) {
     return (
       <div className="card text-center py-12">
-        <Flame className="w-16 h-16 text-mayhem-500 mx-auto mb-4 opacity-50" />
+        <Flame className="w-16 h-16 text-gray-600 mx-auto mb-4" />
         <p className="text-gray-400 text-lg mb-4">No tokens launched yet</p>
-        <p className="text-gray-500 text-sm">Be the first to launch a token!</p>
+        <Link to="/create" className="btn-primary inline-block">
+          Be the First to Launch
+        </Link>
       </div>
     );
   }
@@ -100,71 +104,75 @@ const LatestTokens = () => {
           <Link
             key={token.mintAddress}
             to={`/token/${token.mintAddress}`}
-            className="card hover:border-mayhem-700 transition-all group cursor-pointer"
+            className="card hover:border-mayhem-700 transition-all group"
           >
             {/* Token Image */}
             <div className="relative mb-4">
-              <div className="w-full aspect-square bg-gradient-to-br from-mayhem-500 to-mayhem-700 rounded-lg flex items-center justify-center overflow-hidden">
-                <span className="text-white font-bold text-4xl">
-                  {token.symbol.substring(0, 2)}
-                </span>
+              <div className="w-full h-32 bg-gradient-to-br from-mayhem-500 to-mayhem-700 rounded-lg flex items-center justify-center overflow-hidden">
+                {token.imageUrl ? (
+                  <img 
+                    src={token.imageUrl} 
+                    alt={token.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.parentElement.innerHTML = `<div class="w-full h-full flex items-center justify-center text-white font-bold text-2xl">${token.symbol.substring(0, 2)}</div>`;
+                    }}
+                  />
+                ) : (
+                  <div className="text-white font-bold text-2xl">
+                    {token.symbol.substring(0, 2)}
+                  </div>
+                )}
               </div>
+              
               {mayhemActive && (
-                <div className="absolute top-2 right-2 bg-mayhem-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center space-x-1 animate-pulse-glow">
-                  <Flame className="w-3 h-3" />
+                <div className="absolute top-2 right-2 flex items-center space-x-1 bg-mayhem-500 bg-opacity-90 text-white px-2 py-1 rounded-full text-xs font-bold">
+                  <Flame className="w-3 h-3 animate-pulse" />
                   <span>LIVE</span>
                 </div>
               )}
             </div>
 
             {/* Token Info */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-lg truncate">{token.name}</h3>
-                <span className="text-gray-400 text-sm">${token.symbol}</span>
-              </div>
-
-              {/* Price */}
-              {data?.price && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">Price</span>
-                  <span className="font-bold">
-                    ${parseFloat(data.price).toFixed(6)}
-                  </span>
-                </div>
-              )}
-
-              {/* Market Cap */}
-              {data?.marketCap && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">MCap</span>
-                  <span className="font-bold">{formatNumber(data.marketCap)}</span>
-                </div>
-              )}
-
-              {/* 24h Change */}
-              {data?.priceChange24h !== undefined && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">24h</span>
-                  <span
-                    className={`font-bold ${
-                      data.priceChange24h > 0 ? 'text-green-500' : 'text-red-500'
-                    }`}
-                  >
-                    {data.priceChange24h > 0 ? '+' : ''}
-                    {data.priceChange24h.toFixed(2)}%
-                  </span>
-                </div>
-              )}
+            <div className="mb-3">
+              <h3 className="text-lg font-bold mb-1 group-hover:text-mayhem-400 transition-colors">
+                {token.name}
+              </h3>
+              <span className="text-gray-400 text-sm">${token.symbol}</span>
             </div>
 
-            {/* View Button */}
-            <div className="mt-4 pt-4 border-t border-gray-800 flex items-center justify-between text-sm">
-              <span className="text-gray-400 group-hover:text-mayhem-500 transition-colors flex items-center space-x-1">
+            {/* Stats */}
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Price</span>
+                <span className="font-bold">
+                  {data?.price ? `$${parseFloat(data.price).toFixed(6)}` : '-'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-gray-400">24h</span>
+                <span className={`font-bold ${data?.priceChange24h > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {data?.priceChange24h ? `${data.priceChange24h > 0 ? '+' : ''}${data.priceChange24h.toFixed(2)}%` : '-'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-gray-400">MCap</span>
+                <span className="font-bold">
+                  {data?.marketCap ? formatNumber(data.marketCap) : '-'}
+                </span>
+              </div>
+            </div>
+
+            {/* View Chart Link */}
+            <div className="mt-4 pt-4 border-t border-gray-800 flex items-center justify-between">
+              <span className="text-sm text-mayhem-500 group-hover:text-mayhem-400 flex items-center space-x-1">
                 <TrendingUp className="w-4 h-4" />
                 <span>View Chart</span>
               </span>
-              <ExternalLink className="w-4 h-4 text-gray-600 group-hover:text-mayhem-500 transition-colors" />
+              <ExternalLink className="w-4 h-4 text-gray-400" />
             </div>
           </Link>
         );
