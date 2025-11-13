@@ -18,7 +18,6 @@ const CreateToken = () => {
     twitter: '',
     telegram: '',
     website: '',
-    showName: true,
     devBuyAmount: '0.1',
     slippage: '10',
     priorityFee: '0.0005'
@@ -27,7 +26,7 @@ const CreateToken = () => {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
 
-  // Convertir Uint8Array a base64 (sin usar Buffer)
+  // Convertir Uint8Array a base64 sin usar Buffer
   const uint8ArrayToBase64 = (bytes) => {
     let binary = '';
     for (let i = 0; i < bytes.length; i++) {
@@ -47,7 +46,7 @@ const CreateToken = () => {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) {
         toast.error('Image size must be less than 5MB');
         return;
       }
@@ -75,50 +74,51 @@ const CreateToken = () => {
     }
 
     setLoading(true);
-    const loadingToast = toast.loading('Preparing token creation...');
+    const loadingToast = toast.loading('🔥 Preparing MAYHEM MODE token...');
 
     try {
-      // Step 1: Sign message to verify wallet ownership
+      // Paso 1: Firmar mensaje para verificar propiedad de wallet
       const message = new TextEncoder().encode(
-        `Create token on Sorpresa Launchpad\nWallet: ${publicKey.toString()}\nTimestamp: ${Date.now()}`
+        `Create MAYHEM token on Sorpresa Launchpad\nWallet: ${publicKey.toString()}\nTimestamp: ${Date.now()}`
       );
 
       let signature;
       try {
         signature = await signMessage(message);
-        toast.loading('Wallet verified, uploading data...', { id: loadingToast });
+        toast.loading('✅ Wallet verified, creating token...', { id: loadingToast });
       } catch (error) {
         toast.error('You must sign the message to create a token', { id: loadingToast });
         setLoading(false);
         return;
       }
 
-      // Step 2: Prepare form data
+      // Paso 2: Preparar datos
       const formDataToSend = new FormData();
       
-      // Add wallet info (sin usar Buffer, usando base64 del navegador)
+      // Agregar info de wallet
       formDataToSend.append('walletAddress', publicKey.toString());
       formDataToSend.append('signature', uint8ArrayToBase64(signature));
       formDataToSend.append('message', uint8ArrayToBase64(message));
       
-      // Add all form fields
+      // Agregar datos del token
       Object.keys(formData).forEach(key => {
         formDataToSend.append(key, formData[key]);
       });
       
-      // Add image
+      // Agregar imagen
       formDataToSend.append('image', imageFile);
 
-      toast.loading('Creating your token...', { id: loadingToast });
+      toast.loading('🔥 Launching MAYHEM MODE token on Pump.fun...', { id: loadingToast });
 
-      // Step 3: Send to backend
+      // Paso 3: Enviar al backend (backend crea el token directamente)
       const response = await axios.post(`${API_URL}/api/create-token`, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data'
-        }
+        },
+        timeout: 60000 // 60 segundos timeout
       });
 
-      toast.success('Token created successfully! 🎉', { id: loadingToast });
+      toast.success('🔥 MAYHEM MODE token created successfully! 🎉', { id: loadingToast });
       setCreatedToken(response.data.token);
       
       // Reset form
@@ -129,7 +129,6 @@ const CreateToken = () => {
         twitter: '',
         telegram: '',
         website: '',
-        showName: true,
         devBuyAmount: '0.1',
         slippage: '10',
         priorityFee: '0.0005'
@@ -139,7 +138,8 @@ const CreateToken = () => {
 
     } catch (error) {
       console.error('Error creating token:', error);
-      toast.error(error.response?.data?.error || 'Error creating token', { id: loadingToast });
+      const errorMsg = error.response?.data?.error || error.message || 'Error creating token';
+      toast.error(`Failed: ${errorMsg}`, { id: loadingToast });
     } finally {
       setLoading(false);
     }
@@ -150,13 +150,13 @@ const CreateToken = () => {
       <div className="max-w-2xl mx-auto text-center py-20">
         <div className="card">
           <div className="bg-mayhem-500 bg-opacity-10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
-            <Flame className="w-10 h-10 text-mayhem-500" />
+            <Flame className="w-10 h-10 text-mayhem-500 animate-pulse" />
           </div>
           <h2 className="text-3xl font-bold mb-4">Connect Your Wallet</h2>
           <p className="text-gray-400 mb-8">
-            You need to connect your Solana wallet to create a token. 
+            Connect your Solana wallet to launch a MAYHEM MODE token
             <br />
-            <strong>You will use YOUR wallet and pay YOUR own fees.</strong>
+            <strong className="text-mayhem-400">AI will trade your token for 24 hours!</strong>
           </p>
           <WalletMultiButton className="!bg-mayhem-600 hover:!bg-mayhem-700 !rounded-lg" />
           <p className="text-sm text-gray-500 mt-4">
@@ -171,13 +171,13 @@ const CreateToken = () => {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="card text-center">
-          <div className="bg-green-500 bg-opacity-10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
-            <CheckCircle className="w-10 h-10 text-green-500" />
+          <div className="bg-mayhem-500 bg-opacity-10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+            <Flame className="w-10 h-10 text-mayhem-500 animate-pulse" />
           </div>
           
-          <h2 className="text-3xl font-bold mb-4">Token Created Successfully!</h2>
+          <h2 className="text-3xl font-bold mb-2">🔥 MAYHEM MODE Activated! 🔥</h2>
           <p className="text-gray-400 mb-8">
-            Your token is now live with Mayhem Mode activated. The AI will trade it for the next 24 hours.
+            Your token is now live! The AI agent will trade it for the next 24 hours.
           </p>
 
           <div className="bg-gray-800 rounded-lg p-6 mb-6 text-left">
@@ -192,13 +192,33 @@ const CreateToken = () => {
               </div>
               <div className="col-span-2">
                 <div className="text-sm text-gray-400 mb-1">Mint Address</div>
-                <div className="font-mono text-sm break-all">{createdToken.mintAddress}</div>
+                <div className="font-mono text-xs break-all">{createdToken.mintAddress}</div>
               </div>
-              <div className="col-span-2">
-                <div className="text-sm text-gray-400 mb-1">Created by</div>
-                <div className="font-mono text-sm break-all">{createdToken.creator}</div>
-              </div>
+              {createdToken.signature && (
+                <div className="col-span-2">
+                  <div className="text-sm text-gray-400 mb-1">Transaction</div>
+                  <a 
+                    href={createdToken.transactionUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="font-mono text-xs text-mayhem-400 hover:text-mayhem-300 break-all"
+                  >
+                    {createdToken.signature.slice(0, 16)}...{createdToken.signature.slice(-16)}
+                  </a>
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Mayhem Status */}
+          <div className="bg-mayhem-950 border border-mayhem-800 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-center space-x-2 mb-2">
+              <Flame className="w-5 h-5 text-mayhem-500 animate-pulse" />
+              <span className="font-bold text-mayhem-400">MAYHEM MODE ACTIVE</span>
+            </div>
+            <p className="text-sm text-gray-400">
+              AI agent is now trading your token. Check back in 24 hours!
+            </p>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -208,6 +228,7 @@ const CreateToken = () => {
               rel="noopener noreferrer"
               className="btn-primary flex items-center justify-center space-x-2"
             >
+              <Flame className="w-4 h-4" />
               <span>View on Pump.fun</span>
               <ExternalLink className="w-4 h-4" />
             </a>
@@ -227,7 +248,7 @@ const CreateToken = () => {
             onClick={() => setCreatedToken(null)}
             className="mt-6 text-mayhem-500 hover:text-mayhem-400 font-medium"
           >
-            Create Another Token
+            Launch Another Token
           </button>
         </div>
       </div>
@@ -237,24 +258,28 @@ const CreateToken = () => {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold mb-4">Launch Your Token</h1>
-        <p className="text-gray-400">Fill in the details to launch your token with Mayhem Mode</p>
+        <h1 className="text-4xl font-bold mb-4 flex items-center justify-center gap-3">
+          <Flame className="w-10 h-10 text-mayhem-500 animate-pulse" />
+          Launch MAYHEM MODE Token
+        </h1>
+        <p className="text-gray-400">AI will trade your token for 24 hours automatically</p>
         <p className="text-sm text-mayhem-400 mt-2">
           Connected: {publicKey.toString().slice(0, 4)}...{publicKey.toString().slice(-4)}
         </p>
       </div>
 
       {/* Warning Banner */}
-      <div className="bg-orange-500 bg-opacity-10 border border-orange-500 rounded-lg p-4 mb-6 flex items-start space-x-3">
-        <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+      <div className="bg-mayhem-500 bg-opacity-10 border border-mayhem-500 rounded-lg p-4 mb-6 flex items-start space-x-3">
+        <Flame className="w-6 h-6 text-mayhem-500 flex-shrink-0 mt-0.5 animate-pulse" />
         <div className="text-sm">
-          <div className="font-bold text-orange-500 mb-1">Important Notice</div>
-          <p className="text-gray-300">
-            • You will use YOUR wallet to create this token<br />
-            • YOU will pay all fees (creation + dev buy + priority fee)<br />
-            • Make sure you have enough SOL in your wallet<br />
-            • The token will be created with Mayhem Mode enabled
-          </p>
+          <div className="font-bold text-mayhem-400 mb-2">🔥 MAYHEM MODE FEATURES</div>
+          <ul className="text-gray-300 space-y-1">
+            <li>• <strong>2B total supply</strong> - Standard Pump.fun supply</li>
+            <li>• <strong>AI trades for 24 hours</strong> - Autonomous agent creates volume</li>
+            <li>• <strong>Random buy/sell actions</strong> - Unpredictable trading pattern</li>
+            <li>• <strong>Unsold tokens burned</strong> - After 24h, remaining AI tokens destroyed</li>
+            <li>• <strong>No protocol fees on AI trades</strong> - AI trading is completely free</li>
+          </ul>
         </div>
       </div>
 
@@ -268,7 +293,7 @@ const CreateToken = () => {
                 <img 
                   src={imagePreview} 
                   alt="Token preview" 
-                  className="w-32 h-32 rounded-lg object-cover border-2 border-gray-700"
+                  className="w-32 h-32 rounded-lg object-cover border-2 border-mayhem-700"
                 />
               ) : (
                 <div className="w-32 h-32 bg-gray-800 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-700">
@@ -297,7 +322,7 @@ const CreateToken = () => {
 
         {/* Basic Info */}
         <div className="card">
-          <h3 className="text-xl font-bold mb-4">Basic Information</h3>
+          <h3 className="text-xl font-bold mb-4">Token Information</h3>
           
           <div className="space-y-4">
             <div>
@@ -307,7 +332,7 @@ const CreateToken = () => {
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                placeholder="e.g. My Awesome Token"
+                placeholder="e.g. Mayhem Coin"
                 className="input-field"
                 required
                 maxLength="32"
@@ -321,7 +346,7 @@ const CreateToken = () => {
                 name="symbol"
                 value={formData.symbol}
                 onChange={handleInputChange}
-                placeholder="e.g. MAT"
+                placeholder="e.g. MAYHEM"
                 className="input-field"
                 required
                 maxLength="10"
@@ -334,7 +359,7 @@ const CreateToken = () => {
                 name="description"
                 value={formData.description}
                 onChange={handleInputChange}
-                placeholder="Describe your token..."
+                placeholder="Describe your token and what makes it special..."
                 className="input-field"
                 rows="4"
                 required
@@ -350,13 +375,13 @@ const CreateToken = () => {
           
           <div className="space-y-4">
             <div>
-              <label className="label">Twitter</label>
+              <label className="label">Twitter / X</label>
               <input
                 type="url"
                 name="twitter"
                 value={formData.twitter}
                 onChange={handleInputChange}
-                placeholder="https://twitter.com/yourtoken"
+                placeholder="https://x.com/yourtoken"
                 className="input-field"
               />
             </div>
@@ -389,11 +414,11 @@ const CreateToken = () => {
 
         {/* Trading Settings */}
         <div className="card">
-          <h3 className="text-xl font-bold mb-4">Trading Settings</h3>
+          <h3 className="text-xl font-bold mb-4">Launch Settings</h3>
           
           <div className="space-y-4">
             <div>
-              <label className="label">Dev Buy Amount (SOL)</label>
+              <label className="label">Initial Buy Amount (SOL)</label>
               <input
                 type="number"
                 name="devBuyAmount"
@@ -404,7 +429,9 @@ const CreateToken = () => {
                 min="0"
                 className="input-field"
               />
-              <p className="text-sm text-gray-400 mt-1">Amount of SOL to buy on creation (from YOUR wallet)</p>
+              <p className="text-sm text-gray-400 mt-1">
+                Amount of SOL to buy immediately after creation (recommended: 0.1-1 SOL)
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -439,44 +466,28 @@ const CreateToken = () => {
           </div>
         </div>
 
-        {/* Mayhem Mode Info */}
-        <div className="card bg-mayhem-950 border-mayhem-800">
-          <div className="flex items-start space-x-3">
-            <Flame className="w-6 h-6 text-mayhem-500 flex-shrink-0 mt-1 animate-pulse" />
-            <div>
-              <h3 className="text-xl font-bold mb-2 text-mayhem-400">Mayhem Mode Enabled</h3>
-              <ul className="text-sm text-gray-300 space-y-1">
-                <li>• Total supply: 2,000,000,000 tokens</li>
-                <li>• AI agent will trade for 24 hours</li>
-                <li>• Random buy/sell with equal probability</li>
-                <li>• All unsold AI tokens burned after 24h</li>
-                <li>• No protocol fees for AI trades</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
         {/* Submit Button */}
         <button
           type="submit"
           disabled={loading}
-          className="btn-primary w-full text-lg flex items-center justify-center space-x-2"
+          className="btn-primary w-full text-lg flex items-center justify-center space-x-2 py-4"
         >
           {loading ? (
             <>
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              <span>Creating Token...</span>
+              <span>Launching MAYHEM MODE Token...</span>
             </>
           ) : (
             <>
-              <Flame className="w-5 h-5" />
-              <span>Launch Token with Mayhem Mode</span>
+              <Flame className="w-6 h-6 animate-pulse" />
+              <span>Launch MAYHEM MODE Token</span>
+              <Flame className="w-6 h-6 animate-pulse" />
             </>
           )}
         </button>
 
         <p className="text-center text-sm text-gray-400">
-          By creating a token, you confirm that you have enough SOL to cover all fees
+          By launching, you confirm understanding of Mayhem Mode mechanics
         </p>
       </form>
     </div>
